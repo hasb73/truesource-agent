@@ -1,0 +1,14 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: truesource-web
+spec:
+  template:
+    spec:
+      containers:
+      - image: REGION-docker.pkg.dev/PROJECT/truesource/web:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://YOUR_API_DOMAIN"

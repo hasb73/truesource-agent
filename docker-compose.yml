@@ -1,0 +1,189 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: truesource-postgres
+    environment:
+      POSTGRES_DB: truesource
+      POSTGRES_USER: truesource
+      POSTGRES_PASSWORD: truesource
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U truesource -d truesource"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-aws:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-aws
+    environment:
+      APP_MODULE: aws.app.main:app
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-gitlab:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-gitlab
+    environment:
+      APP_MODULE: gitlab.app.main:app
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-jira:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-jira
+    environment:
+      APP_MODULE: jira.app.main:app
+    ports:
+      - "8003:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-servicenow:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-servicenow
+    environment:
+      APP_MODULE: servicenow.app.main:app
+    ports:
+      - "8004:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-confluence:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-confluence
+    environment:
+      APP_MODULE: confluence.app.main:app
+    ports:
+      - "8005:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mock-sharepoint:
+    build:
+      context: ./mocks
+    container_name: truesource-mock-sharepoint
+    environment:
+      APP_MODULE: sharepoint.app.main:app
+    ports:
+      - "8006:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: truesource-backend
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-5.6}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-TrueSource}
+      DEV_AUTH_MODE: ${DEV_AUTH_MODE:-true}
+      DEV_AUTH_ROLE: ${DEV_AUTH_ROLE:-administrator}
+      DATABASE_URL: postgresql+psycopg://truesource:truesource@postgres:5432/truesource
+      COPILOTKIT_RUNTIME_URL: ${COPILOTKIT_RUNTIME_URL:-}
+      COPILOTKIT_AGENT_ID: ${COPILOTKIT_AGENT_ID:-truesource_guardian}
+      AWS_MOCK_URL: http://mock-aws:8000
+      GITLAB_MOCK_URL: http://mock-gitlab:8000
+      JIRA_MOCK_URL: http://mock-jira:8000
+      SERVICENOW_MOCK_URL: http://mock-servicenow:8000
+      CONFLUENCE_MOCK_URL: http://mock-confluence:8000
+      SHAREPOINT_MOCK_URL: http://mock-sharepoint:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-aws:
+        condition: service_healthy
+      mock-gitlab:
+        condition: service_healthy
+      mock-jira:
+        condition: service_healthy
+      mock-servicenow:
+        condition: service_healthy
+      mock-confluence:
+        condition: service_healthy
+      mock-sharepoint:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_COPILOTKIT_RUNTIME_URL: ${NEXT_PUBLIC_COPILOTKIT_RUNTIME_URL:-}
+        NEXT_PUBLIC_COPILOTKIT_AGENT_ID: ${NEXT_PUBLIC_COPILOTKIT_AGENT_ID:-truesource_guardian}
+    container_name: truesource-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_COPILOTKIT_RUNTIME_URL: ${NEXT_PUBLIC_COPILOTKIT_RUNTIME_URL:-}
+      NEXT_PUBLIC_COPILOTKIT_AGENT_ID: ${NEXT_PUBLIC_COPILOTKIT_AGENT_ID:-truesource_guardian}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+  worker:
+    build:
+      context: ./trigger
+    container_name: truesource-worker
+    environment:
+      TRUESOURCE_API_URL: http://backend:8000
+      TRIGGER_SCAN_INTERVAL_MS: 900000
+      WORKER_ENABLED: false
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -1,0 +1,19 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: truesource-api
+spec:
+  template:
+    spec:
+      containers:
+      - image: REGION-docker.pkg.dev/PROJECT/truesource/api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: CORS_ORIGINS
+          value: "https://YOUR_FRONTEND_DOMAIN"
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-api-key
+              key: latest
