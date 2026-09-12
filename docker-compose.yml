@@ -1,3 +1,6 @@
+# Preserve the existing stack identity after the repository rename.
+name: evergreen_docagent
+
 services:
   postgres:
     image: postgres:16-alpine
