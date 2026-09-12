@@ -9,11 +9,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .agent import analyze, answer_question
-<<<<<<< Updated upstream
-from .connectors import list_documents, reset_demo, simulate_migration, simulate_prompt_injection, update_confluence, update_sharepoint
-=======
-from .connectors import list_confluence_pages, list_documents, list_scenarios, list_sharepoint_documents, reset_demo, simulate_change, simulate_migration, update_confluence, update_sharepoint
->>>>>>> Stashed changes
+from .connectors import list_confluence_pages, list_documents, list_scenarios, list_sharepoint_documents, reset_demo, simulate_change, simulate_migration, simulate_prompt_injection, update_confluence, update_sharepoint
 from .database import health_summary, init_db, load_runtime_state, replace_knowledge, reset_all_state, save_audit, save_incident, save_scan
 from .models import DriftEvent, ScanRun
 from .providers import provider_summary

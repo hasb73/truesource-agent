@@ -134,12 +134,9 @@ export default function Home() {
   const [question, setQuestion] = useState("How is Payments deployed?");
   const [answer, setAnswer] = useState<any>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-<<<<<<< Updated upstream
   const [firewallIncidents, setFirewallIncidents] = useState<FirewallIncident[]>([]);
   const [attackArmed, setAttackArmed] = useState(false);
-=======
   const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
->>>>>>> Stashed changes
 
   const selected = drifts.find((item) => item.id === selectedId) || null;
 
@@ -148,22 +145,15 @@ export default function Home() {
   }
 
   async function refresh() {
-<<<<<<< Updated upstream
-    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, firewallData] = await Promise.all([
-=======
-    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, scenarioData] = await Promise.all([
->>>>>>> Stashed changes
+    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, firewallData, scenarioData] = await Promise.all([
       apiFetch("/api/dashboard").then((response) => response.json()),
       apiFetch("/api/drift").then((response) => response.json()),
       apiFetch("/api/documents").then((response) => response.json()),
       apiFetch("/api/audit").then((response) => response.json()),
       apiFetch("/api/runtime").then((response) => response.json()),
       apiFetch("/api/auth/me").catch(() => null),
-<<<<<<< Updated upstream
       apiFetch("/api/firewall/incidents").then((response) => response.json()),
-=======
       apiFetch("/api/demo/scenarios").then((response) => response.json()).catch(() => []),
->>>>>>> Stashed changes
     ]);
     setDashboard(dashboardData);
     setDrifts(driftData);
