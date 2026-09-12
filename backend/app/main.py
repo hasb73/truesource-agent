@@ -9,11 +9,12 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .agent import analyze, answer_question
-from .connectors import list_documents, reset_demo, simulate_migration, update_confluence, update_sharepoint
+from .connectors import list_documents, reset_demo, simulate_migration, simulate_prompt_injection, update_confluence, update_sharepoint
 from .database import health_summary, init_db, load_runtime_state, replace_knowledge, reset_all_state, save_audit, save_incident, save_scan
 from .models import DriftEvent, ScanRun
 from .providers import provider_summary
 from .security import auth_summary, get_actor, require_reviewer
+from .firewall import authorize_document_change, list_firewall_incidents, reset_firewall_incidents
 from .state import AUDIT, DRIFTS, SCAN_RUNS, VERIFIED_KNOWLEDGE, load_control_plane_state, reset_control_plane_state
 
 app = FastAPI(title="TrueSource API", version="0.1.0")
@@ -121,9 +122,10 @@ def evidence(drift_id: str):
 def documents():
     docs = []
     facts = {fact["attribute"]: fact["value"] for fact in VERIFIED_KNOWLEDGE["facts"]}
+    quarantined = {item["source_reference"].split("//")[-1] for item in list_firewall_incidents()}
     for item in list_documents():
         source = "Confluence" if item["id"].startswith("CONF") else "SharePoint"
-        status = "STALE" if facts.get("compute") == "EKS" and "EC2" in item.get("content", "") else "VERIFIED"
+        status = "QUARANTINED" if item["id"] in quarantined else "STALE" if facts.get("compute") == "EKS" and "EC2" in item.get("content", "") else "VERIFIED"
         docs.append({
             "id": item["id"],
             "source": source,
@@ -156,11 +158,24 @@ def demo_migrate(request: Request):
     return {"ok": True, "result": result}
 
 
+@app.post("/api/demo/inject-agent-attack")
+def demo_inject_agent_attack(request: Request):
+    actor = get_actor(request)
+    result = simulate_prompt_injection()
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail="The Confluence demo connector did not accept the attack scenario")
+    event = {"time": now(), "actor": actor, "event": "AGENT_ATTACK_INJECTED", "result": {"ok": result.get("ok", False)}}
+    AUDIT.append(event)
+    save_audit(event)
+    return {"ok": True, "result": result}
+
+
 @app.post("/api/demo/reset")
 def demo_reset(request: Request):
     actor = get_actor(request)
     result = reset_demo()
     reset_control_plane_state()
+    reset_firewall_incidents()
     reset_all_state()
     event = {"time": now(), "actor": actor, "event": "DEMO_RESET", "result": result}
     AUDIT.append(event)
@@ -193,6 +208,30 @@ def approve(drift_id: str, payload: DecisionRequest, request: Request):
     if drift_id not in DRIFTS:
         raise HTTPException(status_code=404, detail="Incident not found")
     drift = DRIFTS[drift_id]
+    assessments = [authorize_document_change(actor, change) for change in drift.proposed_changes]
+    blocked = [assessment for assessment in assessments if assessment["decision"] == "BLOCK"]
+    if blocked:
+        event = {"time": now(), "actor": actor, "event": "DOCUMENT_WRITE_BLOCKED", "drift_id": drift_id, "security": blocked}
+        AUDIT.append(event)
+        save_audit(event)
+        raise HTTPException(status_code=403, detail={"message": "AgentFirewall blocked the document write", "assessments": blocked})
+    authorization_event = {
+        "time": now(),
+        "actor": actor,
+        "event": "DOCUMENT_WRITE_AUTHORIZED",
+        "drift_id": drift_id,
+        "security": [
+            {
+                "source_reference": assessment["source_reference"],
+                "decision": assessment["decision"],
+                "risk": assessment["risk"],
+                "checks": assessment["checks"],
+            }
+            for assessment in assessments
+        ],
+    }
+    AUDIT.append(authorization_event)
+    save_audit(authorization_event)
     updated_documents = []
     for change in drift.proposed_changes:
         if change["source"] == "confluence":
@@ -260,6 +299,11 @@ def audit():
     return AUDIT
 
 
+@app.get("/api/firewall/incidents")
+def firewall_incidents():
+    return list_firewall_incidents()
+
+
 def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider: Optional[str]) -> None:
     scan_run = SCAN_RUNS[scan_id]
     scan_run.status = "running"
@@ -273,6 +317,22 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
         {"time": now(), "status": "ok", "message": "Jira checked"},
         {"time": now(), "status": "ok", "message": "ServiceNow checked"},
     ])
+    security_events = result.get("security_events", [])
+    if security_events:
+        scan_run.activity.extend([
+            {"time": now(), "status": "warn", "message": "AgentFirewall detected an indirect prompt injection"},
+            {"time": now(), "status": "warn", "message": "Poisoned instructions quarantined from model context"},
+            {"time": now(), "status": "ok", "message": "Scan continued with trusted evidence"},
+        ])
+        security_event = {
+            "time": now(),
+            "actor": actor,
+            "event": "AGENT_ATTACK_BLOCKED",
+            "scan_id": scan_id,
+            "incidents": [item["id"] for item in security_events],
+        }
+        AUDIT.append(security_event)
+        save_audit(security_event)
     if result["drift_detected"] and result["confidence"] >= 0.85:
         existing = next(
             (

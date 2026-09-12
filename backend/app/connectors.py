@@ -85,6 +85,10 @@ def simulate_migration() -> dict[str, Any]:
     }
 
 
+def simulate_prompt_injection() -> dict[str, Any]:
+    return _post_json(f"{CONFLUENCE_MOCK_URL}/confluence/demo/inject-agent-attack") or {"ok": False}
+
+
 def reset_demo() -> dict[str, Any]:
     return {
         "aws": _post_json(f"{AWS_MOCK_URL}/aws/demo/reset"),
