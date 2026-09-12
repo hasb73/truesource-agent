@@ -73,9 +73,19 @@ def _confidence(supporting: list[dict[str, Any]], contradicting: list[dict[str, 
     }
 
 
-def deterministic_analysis(application: str = "Payments", provider_override: Optional[str] = None) -> dict[str, Any]:
-    raw_payload = collect_evidence(application)
-    payload, security_events = inspect_evidence_payload(raw_payload)
+def deterministic_analysis(
+    application: str = "Payments",
+    provider_override: Optional[str] = None,
+    attribute_override: Optional[str] = None,
+    payload_override: Optional[dict[str, Any]] = None,
+    security_events_override: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    if payload_override is None:
+        raw_payload = collect_evidence(application)
+        payload, security_events = inspect_evidence_payload(raw_payload)
+    else:
+        payload = payload_override
+        security_events = security_events_override or []
     aws = payload.get("aws") or {}
     commits = payload.get("gitlab_commits") or []
     deployments = payload.get("gitlab_deployments") or []
@@ -97,14 +107,12 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
         "deployment": _extract(confluence.get("content"), "Deployment"),
     }
 
-    drift_attribute = next(
-        (
-            attribute
-            for attribute in ["compute", "database", "region", "deployment"]
-            if observed_state.get(attribute) and documented_state.get(attribute) and observed_state[attribute] != documented_state[attribute]
-        ),
-        None,
-    )
+    drift_attributes = [
+        attribute
+        for attribute in ["compute", "database", "region", "deployment"]
+        if observed_state.get(attribute) and documented_state.get(attribute) and observed_state[attribute] != documented_state[attribute]
+    ]
+    drift_attribute = attribute_override if attribute_override in drift_attributes else (drift_attributes[0] if drift_attributes else None)
 
     migration_commit = commits[0] if commits else {}
     latest_deployment = deployments[0] if deployments else {}
@@ -277,6 +285,7 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
         "confidence_breakdown": confidence_breakdown,
         "affected_documents": [change["document"] for change in proposed_changes],
         "dedupe_key": f"{application}:{drift_attribute or 'compute'}:{documented_value}->{observed_value}",
+        "drift_attributes": drift_attributes,
         "security_events": security_events,
     }
 
@@ -295,6 +304,29 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
 
 def analyze(application: str = "Payments", provider_override: Optional[str] = None) -> dict[str, Any]:
     return deterministic_analysis(application, provider_override)
+
+
+def analyze_all(application: str = "Payments", provider_override: Optional[str] = None) -> list[dict[str, Any]]:
+    """Evaluate every independently stale attribute from one normalized evidence snapshot."""
+    raw_payload = collect_evidence(application)
+    payload, security_events = inspect_evidence_payload(raw_payload)
+    first_result = deterministic_analysis(
+        application,
+        provider_override,
+        payload_override=payload,
+        security_events_override=security_events,
+    )
+    results = [first_result]
+    for attribute in first_result["drift_attributes"][1:]:
+        results.append(
+            deterministic_analysis(
+                application,
+                "deterministic",
+                attribute_override=attribute,
+                payload_override=payload,
+            )
+        )
+    return results
 
 
 def answer_question(question: str, provider_override: Optional[str] = None) -> dict[str, Any]:

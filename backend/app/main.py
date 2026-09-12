@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from .agent import analyze, answer_question
+from .agent import analyze_all, answer_question
 from .connectors import list_confluence_pages, list_documents, list_scenarios, list_sharepoint_documents, reset_demo, simulate_change, simulate_migration, simulate_prompt_injection, update_confluence, update_sharepoint
 from .database import health_summary, init_db, load_runtime_state, replace_knowledge, reset_all_state, save_audit, save_incident, save_scan
 from .models import DriftEvent, ScanRun
@@ -378,14 +378,14 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
     scan_run.started_at = now()
     scan_run.activity.append({"time": now(), "status": "running", "message": "Discovering enterprise systems"})
     save_scan(scan_run)
-    result = analyze(scope[0] if scope else "Payments", provider)
+    results = analyze_all(scope[0] if scope else "Payments", provider)
     scan_run.activity.extend([
         {"time": now(), "status": "ok", "message": "AWS checked"},
         {"time": now(), "status": "ok", "message": "GitLab checked"},
         {"time": now(), "status": "ok", "message": "Jira checked"},
         {"time": now(), "status": "ok", "message": "ServiceNow checked"},
     ])
-    security_events = result.get("security_events", [])
+    security_events = [event for result in results for event in result.get("security_events", [])]
     if security_events:
         scan_run.activity.extend([
             {"time": now(), "status": "warn", "message": "AgentFirewall detected an attempted knowledge manipulation"},
@@ -401,7 +401,12 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
         }
         AUDIT.append(security_event)
         save_audit(security_event)
-    if result["drift_detected"] and result["confidence"] >= 0.85:
+    incident_ids = []
+    findings = []
+    for result in results:
+        findings.append(result["finding"])
+        if not (result["drift_detected"] and result["confidence"] >= 0.85):
+            continue
         existing = next(
             (
                 item for item in DRIFTS.values()
@@ -422,7 +427,7 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
             drift_id = "KI-" + uuid.uuid4().hex[:6].upper()
             drift = DriftEvent(
                 id=drift_id,
-                title="Payments deployment profile drift",
+                title=f"Payments {result['attribute']} profile drift",
                 application=result["application"],
                 attribute=result["attribute"],
                 severity="HIGH",
@@ -442,18 +447,16 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
             )
             DRIFTS[drift.id] = drift
         save_incident(drift)
-        scan_run.incident_ids = [drift.id]
-        scan_run.summary = result["finding"]
+        incident_ids.append(drift.id)
         scan_run.activity.extend([
-            {"time": now(), "status": "warn", "message": "Confluence contradicts operational state"},
-            {"time": now(), "status": "warn", "message": "SharePoint contradicts operational state"},
-            {"time": now(), "status": "running", "message": "Preparing repair proposal"},
+            {"time": now(), "status": "warn", "message": f"Documentation contradicts {result['attribute']} operational state"},
+            {"time": now(), "status": "running", "message": f"Preparing {result['attribute']} repair proposal"},
         ])
         event = {"time": now(), "actor": actor, "event": "DRIFT_DETECTED", "drift_id": drift.id, "scan_id": scan_id}
         AUDIT.append(event)
         save_audit(event)
-    else:
-        scan_run.summary = result["finding"]
+    scan_run.incident_ids = incident_ids
+    scan_run.summary = " ".join(dict.fromkeys(findings))
     scan_run.status = "completed"
     scan_run.finished_at = now()
     save_scan(scan_run)
