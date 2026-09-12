@@ -68,7 +68,7 @@ export default function PortalPage() {
   return <main className="confluence-shell">
     <header className="confluence-topbar">
       <a className="confluence-brand" href="/portal"><span className="confluence-mark">C</span><strong>TrueSource</strong></a>
-      <nav className="confluence-global-nav" aria-label="Global navigation"><button className="active">Spaces</button><button>People</button><button>Templates</button><button>Apps</button></nav>
+      <nav className="confluence-global-nav" aria-label="Global navigation"><button className="active">Spaces</button><a href="/graph">Graph</a><button>People</button><button>Templates</button><button>Apps</button></nav>
       <div className="confluence-topbar-actions"><label className="confluence-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search knowledge" /></label><button className="confluence-create" onClick={() => setEditing(true)}>Create</button><button className="confluence-icon" title="Notifications">♢</button><div className="confluence-avatar">TS</div></div>
     </header>
     <div className="confluence-workspace">

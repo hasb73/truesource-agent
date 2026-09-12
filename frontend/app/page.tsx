@@ -288,6 +288,7 @@ export default function Home() {
           <div className="pill firewall-pill">AgentFirewall · enforcing</div>
           <div className="pill">● Knowledge health {dashboard?.health ?? "--"}%</div>
           <a className="secondary doc-link" href="/portal">Open Docs Portal</a>
+          <a className="secondary doc-link" href="/graph">Knowledge Graph</a>
           <AuthControls actor={actor} />
         </div>
       </header>
@@ -372,6 +373,8 @@ export default function Home() {
         <Stat label="Verified facts" value={dashboard?.verified ?? "—"} />
         <Stat label="Agent attacks blocked" value={firewallIncidents.length} />
       </section>
+
+      <KnowledgeGraphOverview documents={documents} drifts={drifts} />
 
       <section className={`firewall-console ${firewallIncidents.length ? "has-incident" : ""}`}>
         <div className="firewall-heading">
@@ -597,4 +600,37 @@ export default function Home() {
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <div className="stat"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function KnowledgeGraphOverview({ documents, drifts }: { documents: DocumentRow[]; drifts: Drift[] }) {
+  const applications = Array.from(new Set(documents.map((document) => document.application))).filter(Boolean).slice(0, 5);
+  const activeDriftApps = new Set(drifts.filter((drift) => !["resolved", "rejected"].includes(drift.status)).map((drift) => drift.application));
+  const operationalSystems = ["AWS", "GitLab", "Jira", "ServiceNow"];
+  const documentationSystems = ["Confluence", "SharePoint"];
+
+  return (
+    <section className="homepage-graph">
+      <div className="homepage-graph-head">
+        <div><span>KNOWLEDGE OBSERVABILITY</span><h2>Enterprise knowledge graph</h2><p>Operational systems verify documentation before facts reach enterprise AI.</p></div>
+        <a className="secondary doc-link" href="/graph">Open detailed graph →</a>
+      </div>
+      <div className="homepage-graph-canvas">
+        <svg viewBox="0 0 1140 420" role="img" aria-label="Enterprise knowledge graph showing source systems, TrueSource, applications, and documentation systems">
+          <defs><marker id="homepage-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker></defs>
+          {operationalSystems.map((_, index) => <line key={`source-${index}`} className="homepage-graph-edge source" x1="185" y1={78 + index * 78} x2="470" y2="185" markerEnd="url(#homepage-arrow)" />)}
+          {documentationSystems.map((_, index) => <line key={`docs-${index}`} className="homepage-graph-edge docs" x1="955" y1={118 + index * 150} x2="670" y2="210" markerEnd="url(#homepage-arrow)" />)}
+          {applications.map((_, index) => <line key={`app-${index}`} className="homepage-graph-edge app" x1="570" y1="260" x2={175 + index * 195} y2="342" markerEnd="url(#homepage-arrow)" />)}
+          {operationalSystems.map((name, index) => <g className="homepage-graph-node source-node" key={name} transform={`translate(35, ${52 + index * 78})`}><rect width="150" height="50" rx="7" /><text x="14" y="23">{name}</text><text className="node-subtitle" x="14" y="39">operational evidence</text></g>)}
+          {documentationSystems.map((name, index) => <g className="homepage-graph-node docs-node" key={name} transform={`translate(955, ${93 + index * 150})`}><rect width="150" height="50" rx="7" /><text x="14" y="23">{name}</text><text className="node-subtitle" x="14" y="39">documentation source</text></g>)}
+          <g className="homepage-graph-node guardian-node" transform="translate(470, 145)"><rect width="200" height="115" rx="10" /><text className="node-kicker" x="18" y="29">CONTROL PLANE</text><text x="18" y="59">TrueSource</text><text className="node-subtitle" x="18" y="81">verify · govern · repair</text><text className="node-subtitle" x="18" y="98">trusted knowledge only</text></g>
+          {applications.map((application, index) => {
+            const appDocuments = documents.filter((document) => document.application === application);
+            const stale = appDocuments.some((document) => document.status === "STALE" || document.status === "QUARANTINED") || activeDriftApps.has(application);
+            return <g className={`homepage-graph-node app-node ${stale ? "attention" : ""}`} key={application} transform={`translate(${100 + index * 195}, 342)`}><rect width="150" height="51" rx="7" /><text x="13" y="22">{application}</text><text className="node-subtitle" x="13" y="39">{stale ? "● needs review" : "● documentation verified"}</text></g>;
+          })}
+        </svg>
+      </div>
+      <div className="homepage-graph-legend"><span><i className="source" /> Operational evidence</span><span><i className="docs" /> Documentation sources</span><span><i className="app" /> Application knowledge</span><span><i className="alert" /> Needs review</span></div>
+    </section>
+  );
 }
