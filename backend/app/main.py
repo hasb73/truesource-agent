@@ -359,8 +359,8 @@ def reject(drift_id: str, payload: DecisionRequest, request: Request):
     return {"ok": True}
 
 @app.post("/api/ask")
-def ask(req: AskRequest):
-    return answer_question(req.question, req.provider)
+async def ask(req: AskRequest):
+    return await answer_question(req.question, req.provider)
 
 @app.get("/api/audit")
 def audit():

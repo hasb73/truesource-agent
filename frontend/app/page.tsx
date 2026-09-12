@@ -199,13 +199,16 @@ export default function Home() {
 
   async function applyScenario(scenario: string) {
     setBusyAction(`scenario:${scenario}`);
-    await apiFetch("/api/demo/change", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenario }),
-    });
-    await refresh();
-    setBusyAction(null);
+    try {
+      await apiFetch("/api/demo/change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario }),
+      });
+      await refresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function resetDemo() {
@@ -227,13 +230,15 @@ export default function Home() {
     setBusyAction(null);
   }
 
-  async function runScan() {
-    setBusyAction("scan");
+  async function queueAndWaitForScan(trigger: string) {
     const response = await apiFetch("/api/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: ["Payments"], trigger: "manual", provider }),
+      body: JSON.stringify({ scope: ["Payments"], trigger, provider }),
     });
+    if (!response.ok) {
+      return;
+    }
     const created = await response.json();
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const status = await apiFetch(`/api/scans/${created.scan_id}`).then((result) => result.json());
@@ -243,8 +248,16 @@ export default function Home() {
       }
       await delay(350);
     }
-    await refresh();
-    setBusyAction(null);
+  }
+
+  async function runScan() {
+    setBusyAction("scan");
+    try {
+      await queueAndWaitForScan("manual");
+      await refresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function approve() {
