@@ -276,12 +276,8 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
         "proposed_changes": proposed_changes,
         "confidence_breakdown": confidence_breakdown,
         "affected_documents": [change["document"] for change in proposed_changes],
-<<<<<<< Updated upstream
-        "dedupe_key": f"{application}:compute:{documented_compute}->{observed_compute}",
-        "security_events": security_events,
-=======
         "dedupe_key": f"{application}:{drift_attribute or 'compute'}:{documented_value}->{observed_value}",
->>>>>>> Stashed changes
+        "security_events": security_events,
     }
 
     llm_result = run_json_prompt(
