@@ -1,6 +1,8 @@
-# TrueSource — Self-Healing Enterprise Knowledge Layer
+# TrueSource Agent — Self-Healing, Agent-Safe Enterprise Knowledge
 
-TrueSource is the knowledge control plane that sits between enterprise reality and enterprise AI. It continuously reconciles what a company says in documentation with what the company actually does in operational systems, then exposes only verified knowledge to downstream assistants and RAG.
+TrueSource Agent is a knowledge control plane that sits between enterprise systems, documentation, and AI. It detects documentation drift, verifies claims against live operational evidence, proposes governed repairs, and exposes only verified knowledge to downstream assistants and RAG.
+
+Its AgentFirewall also protects the agent itself: malicious instructions hidden inside documents or tickets are detected and quarantined before they can influence a model or trigger a tool.
 
 ## Problem
 
@@ -8,13 +10,24 @@ Traditional enterprise RAG often treats stale documentation as truth. When Payme
 
 ## Solution
 
-TrueSource turns that into a governed workflow:
+TrueSource turns that into a governed, agent-safe workflow:
 
 ```text
-Reality -> Evidence -> Truth -> Documentation -> Trusted AI
+Enterprise systems → AgentFirewall → Verified truth → Documentation → Trusted AI
 ```
 
-The product detects drift, explains the contradiction, proposes fixes, requires human approval, updates stale documents, and refreshes a verified knowledge layer.
+The product collects evidence, blocks unsafe instructions, explains contradictions, proposes fixes, requires human approval, updates stale documents, and refreshes the verified knowledge layer.
+
+## Key capabilities
+
+1. Detect drift between Confluence or SharePoint and AWS, GitLab, Jira, and ServiceNow.
+2. Calculate deterministic, authority-weighted confidence before asking a model for an explanation.
+3. Generate document repair proposals with evidence and provenance.
+4. Require reviewer approval before executing connector writes.
+5. Answer questions from verified facts instead of stale documents.
+6. Block prompt injection, knowledge manipulation, credential requests, concealment, and destructive instructions.
+7. Investigate suspicious edits using author, version, change-request, and operational context.
+8. Preserve an audit trail of scans, decisions, containment, and approvals.
 
 ## Architecture
 
@@ -33,7 +46,7 @@ Runtime behavior highlights:
 2. External model egress is redacted and provider-routed (OpenAI, OpenRouter, or deterministic fallback).
 3. Control-plane state is persisted in PostgreSQL and reloaded on backend startup.
 4. Approval decisions are reviewer-gated and recorded in audit history.
-5. AgentFirewall quarantines indirect prompt injections before model access and validates document writes before connector execution.
+5. AgentFirewall makes deterministic `ALLOW`, `REVIEW`, or `BLOCK` decisions before model access and validates document writes before connector execution.
 
 ## Sponsor technologies
 
@@ -76,6 +89,15 @@ Notes:
 docker compose up --build
 ```
 
+Useful lifecycle commands:
+
+```bash
+docker compose ps
+docker compose logs -f backend frontend
+docker compose down
+docker compose up --build -d
+```
+
 Expected services:
 
 1. `postgres`
@@ -95,24 +117,38 @@ Open:
 2. Backend docs: `http://localhost:8000/docs`
 3. API health: `http://localhost:8000/api/health`
 
-## Demo walkthrough
+## Recommended demo walkthrough
 
 1. Open the dashboard and ask “How is Payments deployed?” to see the stale EC2 answer.
-2. Click one scenario trigger such as `Simulate Migration -> EKS`, `Simulate DB Modernization`, `Simulate Region Failover`, or `Simulate GitOps Rollout`.
+2. Click `Simulate Migration → EKS`.
 3. Click `Run Scan`.
 4. Review the knowledge incident, evidence, and proposed diffs.
 5. Click `Approve & refresh verified RAG`.
 6. Ask the same question again and verify the answer now says EKS with confidence and provenance.
 7. Click `Reset Demo` to restore the original scenario.
 
+Additional operational scenarios are available for database modernization, region failover, and GitOps rollout.
+
 ### AgentFirewall integration demo
 
 1. Click `Reset Demo`, then `Simulate Migration -> EKS`.
 2. Click `Simulate malicious Confluence edit` to add a hidden instruction that tries to keep stale EC2 knowledge verified despite contradictory AWS and GitLab evidence.
 3. Click `Run Scan`.
-4. Review the AgentFirewall trace and contextual investigation: external author, unexpected version, missing change request, and AWS/GitLab contradiction.
+4. AgentFirewall changes from `EDIT PENDING SCAN` to `THREAT CONTAINED` and shows four concise reasons: external author, unexpected version, no linked change request, and live-system evidence.
 5. Confirm TrueSource still detects the legitimate EC2 -> EKS drift from trusted evidence.
 6. Approve the safe repair; AgentFirewall validates the write before the connector executes.
+
+The incident panel keeps the default explanation simple. Select `Show technical details` to inspect the detection signals and containment trace.
+
+### What AgentFirewall decides
+
+| Decision | Meaning | Result |
+| --- | --- | --- |
+| `ALLOW` | Content is low risk | Admit it to the evidence pipeline |
+| `REVIEW` | Content is ambiguous | Retain it for human review |
+| `BLOCK` | Content contains a dangerous instruction | Quarantine it, deny sensitive tools, and continue with trusted evidence |
+
+AgentFirewall enforcement is deterministic and does not require a model key. OpenAI or OpenRouter may generate explanations, but the model does not decide whether a dangerous action executes.
 
 See `docs/agent-firewall-testing.md` for detailed tests and expected results.
 
@@ -142,25 +178,33 @@ Core endpoints:
 9. `POST /api/scan`
 10. `POST /api/drift/{id}/approve`
 11. `POST /api/drift/{id}/reject`
-12. `POST /api/demo/migrate`
-13. `POST /api/demo/reset`
-14. `POST /api/ask`
-15. `GET /api/audit`
-16. `GET /api/runtime`
-17. `GET /api/auth/me`
+12. `GET /api/demo/scenarios`
+13. `POST /api/demo/change`
+14. `POST /api/demo/inject-agent-attack`
+15. `POST /api/demo/reset`
+16. `GET /api/docs/portal`
+17. `PUT /api/docs/portal/confluence/{id}`
+18. `PUT /api/docs/portal/sharepoint/{id}`
+19. `POST /api/ask`
+20. `GET /api/audit`
+21. `GET /api/firewall/incidents`
+22. `GET /api/runtime`
+23. `GET /api/auth/me`
 
 ## Testing
 
-Run backend tests:
+Run all backend tests:
 
 ```bash
-pytest backend/tests
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+python3 -m pytest backend/tests
 ```
 
-Current status:
+The suite covers scan and approval behavior, security redaction, prompt-injection quarantine, contextual investigation, write authorization, and protection of model input.
 
-1. Backend unit and API tests are implemented and passing for core scan, auth/security helpers, and incident workflow behavior.
-2. Wider integration and end-to-end coverage are still planned to expand connector and UI path validation.
+For the complete AgentFirewall test flow and expected UI results, see [`docs/agent-firewall-testing.md`](docs/agent-firewall-testing.md).
 
 ## Cloud Run deployment
 
@@ -180,6 +224,10 @@ Current controls include:
 2. Redaction before outbound model-provider calls.
 3. Development-mode actor identity via local headers.
 4. Persisted audit trail for scan and decision events.
+5. Ingress inspection across Confluence, SharePoint, GitLab, Jira, and ServiceNow.
+6. Quarantine before malicious content reaches a model.
+7. Pre-execution checks for reviewer identity, tenant, diff, and connector target.
+8. Contextual investigation of source ownership, version history, change records, and live evidence.
 
 Remaining hardening roadmap includes tenant isolation and production secret-management posture.
 
