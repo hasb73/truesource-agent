@@ -6,6 +6,15 @@ import { AuthControls } from "../components/auth-controls";
 import { CopilotAssistant } from "../components/copilot-assistant";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const SERVICE_LINKS = [
+  { label: "Backend API", href: "http://localhost:8000/docs" },
+  { label: "AWS Mock", href: "http://localhost:8001/docs" },
+  { label: "GitLab Mock", href: "http://localhost:8002/docs" },
+  { label: "Jira Mock", href: "http://localhost:8003/docs" },
+  { label: "ServiceNow Mock", href: "http://localhost:8004/docs" },
+  { label: "Confluence Mock", href: "http://localhost:8005/docs" },
+  { label: "SharePoint Mock", href: "http://localhost:8006/docs" },
+];
 
 type Evidence = {
   source: string;
@@ -281,6 +290,17 @@ export default function Home() {
           <AuthControls actor={actor} />
         </div>
       </header>
+
+      <section className="service-links">
+        <div className="service-links-title">Child Services</div>
+        <div className="service-links-list">
+          {SERVICE_LINKS.map((service) => (
+            <a key={service.label} className="service-link-chip" href={service.href} target="_blank" rel="noreferrer">
+              {service.label}
+            </a>
+          ))}
+        </div>
+      </section>
 
       <section className="hero">
         <div>
