@@ -72,6 +72,18 @@ type AuditEvent = {
   event: string;
 };
 
+type FirewallIncident = {
+  id: string;
+  time: string;
+  source: string;
+  source_reference: string;
+  decision: string;
+  risk: number;
+  signals: string[];
+  checks: string[];
+  actions: string[];
+};
+
 type DocumentRow = {
   id: string;
   source: string;
@@ -116,6 +128,8 @@ export default function Home() {
   const [question, setQuestion] = useState("How is Payments deployed?");
   const [answer, setAnswer] = useState<any>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [firewallIncidents, setFirewallIncidents] = useState<FirewallIncident[]>([]);
+  const [attackArmed, setAttackArmed] = useState(false);
 
   const selected = drifts.find((item) => item.id === selectedId) || null;
 
@@ -124,19 +138,21 @@ export default function Home() {
   }
 
   async function refresh() {
-    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse] = await Promise.all([
+    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, firewallData] = await Promise.all([
       apiFetch("/api/dashboard").then((response) => response.json()),
       apiFetch("/api/drift").then((response) => response.json()),
       apiFetch("/api/documents").then((response) => response.json()),
       apiFetch("/api/audit").then((response) => response.json()),
       apiFetch("/api/runtime").then((response) => response.json()),
       apiFetch("/api/auth/me").catch(() => null),
+      apiFetch("/api/firewall/incidents").then((response) => response.json()),
     ]);
     setDashboard(dashboardData);
     setDrifts(driftData);
     setDocuments(documentData);
     setAudit([...auditData].reverse());
     setRuntime(runtimeData);
+    setFirewallIncidents(firewallData);
     if (runtimeData?.llm?.active_provider) {
       setProvider((current) => current === "deterministic" ? runtimeData.llm.active_provider : current);
     }
@@ -171,6 +187,15 @@ export default function Home() {
     setAnswer(null);
     setScanRun(null);
     setSelectedId(null);
+    setAttackArmed(false);
+    await refresh();
+    setBusyAction(null);
+  }
+
+  async function injectAgentAttack() {
+    setBusyAction("attack");
+    const response = await apiFetch("/api/demo/inject-agent-attack", { method: "POST" });
+    if (response.ok) setAttackArmed(true);
     await refresh();
     setBusyAction(null);
   }
@@ -233,6 +258,7 @@ export default function Home() {
           <div className="tagline">Self-healing enterprise knowledge layer</div>
         </div>
         <div className="topbar-actions">
+          <div className="pill firewall-pill">AgentFirewall · enforcing</div>
           <div className="pill">● Knowledge health {dashboard?.health ?? "--"}%</div>
           <AuthControls actor={actor} />
         </div>
@@ -267,6 +293,9 @@ export default function Home() {
           <button className="secondary" onClick={changeReality} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "migrate" ? "Simulating…" : "Simulate Migration → EKS"}
           </button>
+          <button className="danger-button" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
+            {busyAction === "attack" ? "Injecting…" : attackArmed ? "Poisoned document armed" : "Inject poisoned document"}
+          </button>
           <button className="primary" onClick={runScan} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "scan" ? "Scanning…" : "Run Scan"}
           </button>
@@ -278,6 +307,41 @@ export default function Home() {
         <Stat label="Documents monitored" value={dashboard?.documents ?? "—"} />
         <Stat label="Open incidents" value={dashboard?.open_drift ?? "—"} />
         <Stat label="Verified facts" value={dashboard?.verified ?? "—"} />
+        <Stat label="Agent attacks blocked" value={firewallIncidents.length} />
+      </section>
+
+      <section className={`firewall-console ${firewallIncidents.length ? "has-incident" : ""}`}>
+        <div className="firewall-heading">
+          <div>
+            <span className="firewall-eyebrow">AGENTIC SECURITY SUPERVISOR</span>
+            <h2>AgentFirewall</h2>
+            <p>Inspects untrusted evidence before model access and validates document writes before execution.</p>
+          </div>
+          <div className="firewall-state">{firewallIncidents.length ? "THREAT CONTAINED" : attackArmed ? "ATTACK ARMED" : "MONITORING"}</div>
+        </div>
+        {firewallIncidents.length === 0 ? (
+          <div className="firewall-idle">
+            <div><b>Ingress guard</b><span>Confluence, SharePoint, Jira, GitLab</span></div>
+            <div><b>Action guard</b><span>Reviewer identity, diff scope, write target</span></div>
+            <div><b>Decision</b><span>Allow · Review · Block</span></div>
+          </div>
+        ) : (
+          <div className="firewall-incident">
+            <div className="firewall-score"><strong>{firewallIncidents[0].risk}</strong><span>/100 risk</span></div>
+            <div>
+              <small>{firewallIncidents[0].id} · {firewallIncidents[0].source_reference}</small>
+              <h3>Indirect prompt injection blocked</h3>
+              <div className="signal-list">
+                {firewallIncidents[0].signals.map((signal) => <span key={signal}>{signal}</span>)}
+              </div>
+            </div>
+            <ol className="firewall-trace">
+              {firewallIncidents[0].checks.concat(firewallIncidents[0].actions).map((step, index) => (
+                <li key={`${step}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span>{step}</li>
+              ))}
+            </ol>
+          </div>
+        )}
       </section>
 
       <section className="grid">

@@ -4,6 +4,7 @@ import re
 from typing import Any, Optional
 
 from .connectors import collect_evidence
+from .firewall import inspect_evidence_payload
 from .providers import effective_provider, run_json_prompt
 from .security import redact_value
 from .state import VERIFIED_KNOWLEDGE
@@ -48,7 +49,8 @@ def _confidence(supporting: list[dict[str, Any]], contradicting: list[dict[str, 
 
 
 def deterministic_analysis(application: str = "Payments", provider_override: Optional[str] = None) -> dict[str, Any]:
-    payload = collect_evidence(application)
+    raw_payload = collect_evidence(application)
+    payload, security_events = inspect_evidence_payload(raw_payload)
     aws = payload.get("aws") or {}
     commits = payload.get("gitlab_commits") or []
     deployments = payload.get("gitlab_deployments") or []
@@ -202,6 +204,7 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
         "confidence_breakdown": confidence_breakdown,
         "affected_documents": [change["document"] for change in proposed_changes],
         "dedupe_key": f"{application}:compute:{documented_compute}->{observed_compute}",
+        "security_events": security_events,
     }
 
     llm_result = run_json_prompt(
