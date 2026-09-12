@@ -25,6 +25,11 @@ CONCEALMENT = re.compile(
 DESTRUCTIVE_ACTION = re.compile(
     r"(?i)(delete|destroy|wipe|remove).{0,50}(production|document|secret|credential|database|logs?)"
 )
+KNOWLEDGE_MANIPULATION = re.compile(
+    r"(?i)(ignore|disregard|override).{0,70}(aws|gitlab|servicenow|evidence)|"
+    r"(mark|treat).{0,45}(document|page|content).{0,25}(verified|approved)|"
+    r"keep.{0,45}(ec2|stale|outdated)"
+)
 
 FIREWALL_INCIDENTS: dict[str, dict[str, Any]] = {}
 
@@ -39,7 +44,14 @@ def _incident_id(source: str, source_reference: str, content: str) -> str:
 
 
 def _sanitize_blocked_content(content: str) -> str:
-    unsafe_patterns = [PROMPT_INJECTION, SECRET_REQUEST, EXTERNAL_TRANSFER, CONCEALMENT, DESTRUCTIVE_ACTION]
+    unsafe_patterns = [
+        PROMPT_INJECTION,
+        SECRET_REQUEST,
+        EXTERNAL_TRANSFER,
+        CONCEALMENT,
+        DESTRUCTIVE_ACTION,
+        KNOWLEDGE_MANIPULATION,
+    ]
     retained = [
         line for line in content.splitlines()
         if not any(pattern.search(line) for pattern in unsafe_patterns)
@@ -53,6 +65,7 @@ def inspect_content(
     source: str,
     source_reference: str,
     record: bool = True,
+    context_checks: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     signals: list[str] = []
     checks = ["Source provenance checked"]
@@ -78,6 +91,10 @@ def inspect_content(
         signals.append("Destructive operation requested")
         checks.append("Blast radius estimated")
         risk += 30
+    if KNOWLEDGE_MANIPULATION.search(content):
+        signals.append("Trusted evidence override requested")
+        checks.append("Claim checked against authoritative systems")
+        risk += 28
 
     risk = min(risk, 99)
     decision = "BLOCK" if risk >= 60 else "REVIEW" if risk >= 30 else "ALLOW"
@@ -100,6 +117,7 @@ def inspect_content(
         "signals": signals,
         "checks": checks,
         "actions": actions,
+        "context_checks": context_checks or [],
         "sanitized_content": sanitized_content,
     }
     if record and decision == "BLOCK":
@@ -111,24 +129,69 @@ def inspect_evidence_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], l
     safe_payload = deepcopy(payload)
     blocked: list[dict[str, Any]] = []
 
-    def inspect_field(container: dict[str, Any] | None, field: str, source: str, reference: str) -> None:
+    def inspect_field(
+        container: dict[str, Any] | None,
+        field: str,
+        source: str,
+        reference: str,
+        context_checks: list[dict[str, str]] | None = None,
+    ) -> None:
         if not container or not isinstance(container.get(field), str):
             return
         assessment = inspect_content(
             container[field],
             source=source,
             source_reference=reference,
+            context_checks=context_checks,
         )
         if assessment["decision"] == "BLOCK":
             container[field] = assessment["sanitized_content"]
             blocked.append({key: value for key, value in assessment.items() if key != "sanitized_content"})
 
     confluence = safe_payload.get("confluence")
+    aws = safe_payload.get("aws") or {}
+    deployments = safe_payload.get("gitlab_deployments") or []
+    latest_deployment = deployments[0] if deployments else {}
+    author = (confluence or {}).get("author", "Unknown")
+    version = (confluence or {}).get("version", "Unknown")
+    previous_version = (confluence or {}).get("previous_version")
+    linked_change = (confluence or {}).get("linked_change_request")
+    version_result = (
+        f"v{previous_version} → v{version} outside the approved workflow"
+        if previous_version is not None
+        else f"v{version}; no unexpected edit recorded"
+    )
+    confluence_context = [
+        {
+            "label": "External author" if author == "External Contractor" else "Document author",
+            "result": str(author),
+            "status": "warning" if author == "External Contractor" else "pass",
+        },
+        {
+            "label": "Unexpected version change" if previous_version is not None else "Version history",
+            "result": f"v{previous_version} → v{version}" if previous_version is not None else version_result,
+            "status": "warning" if previous_version is not None else "pass",
+        },
+        {
+            "label": "Linked change request" if linked_change else "No linked change request",
+            "result": str(linked_change) if linked_change else "No Jira or ServiceNow ticket",
+            "status": "warning" if not linked_change else "pass",
+        },
+        {
+            "label": "Live systems",
+            "result": (
+                f"AWS: {aws.get('compute', 'unknown')} · GitLab: "
+                f"{latest_deployment.get('runtime', 'unknown')}"
+            ),
+            "status": "pass" if aws.get("compute") == latest_deployment.get("runtime") == "EKS" else "warning",
+        },
+    ]
     inspect_field(
         confluence,
         "content",
         "confluence",
         f"confluence://{(confluence or {}).get('id', 'unknown')}",
+        confluence_context,
     )
     sharepoint = safe_payload.get("sharepoint")
     inspect_field(

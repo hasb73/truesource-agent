@@ -91,6 +91,7 @@ type FirewallIncident = {
   signals: string[];
   checks: string[];
   actions: string[];
+  context_checks?: { label: string; result: string; status: "pass" | "warning" }[];
 };
 
 type DocumentRow = {
@@ -340,9 +341,12 @@ export default function Home() {
           <button className="secondary" onClick={() => void applyScenario("gitops_rollout")} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "scenario:gitops_rollout" ? "Simulating…" : "Simulate GitOps Rollout"}
           </button>
-          <button className="danger-button" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
-            {busyAction === "attack" ? "Injecting…" : attackArmed ? "Poisoned document armed" : "Inject poisoned document"}
-          </button>
+          <div className="attack-control">
+            <button className="danger-button" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
+              {busyAction === "attack" ? "Simulating…" : attackArmed ? "Malicious edit ready" : "Simulate malicious Confluence edit"}
+            </button>
+            <span>Adds a hidden instruction that tries to make TrueSource ignore trusted AWS and GitLab evidence.</span>
+          </div>
           <button className="primary" onClick={runScan} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "scan" ? "Scanning…" : "Run Scan"}
           </button>
@@ -378,7 +382,7 @@ export default function Home() {
             <h2>AgentFirewall</h2>
             <p>Inspects untrusted evidence before model access and validates document writes before execution.</p>
           </div>
-          <div className="firewall-state">{firewallIncidents.length ? "THREAT CONTAINED" : attackArmed ? "ATTACK ARMED" : "MONITORING"}</div>
+          <div className="firewall-state">{firewallIncidents.length ? "THREAT CONTAINED" : attackArmed ? "EDIT PENDING SCAN" : "MONITORING"}</div>
         </div>
         {firewallIncidents.length === 0 ? (
           <div className="firewall-idle">
@@ -388,19 +392,34 @@ export default function Home() {
           </div>
         ) : (
           <div className="firewall-incident">
-            <div className="firewall-score"><strong>{firewallIncidents[0].risk}</strong><span>/100 risk</span></div>
-            <div>
-              <small>{firewallIncidents[0].id} · {firewallIncidents[0].source_reference}</small>
-              <h3>Indirect prompt injection blocked</h3>
+            <div className="firewall-summary">
+              <small>Confluence · CONF-121 · High risk {firewallIncidents[0].risk}/100</small>
+              <h3>Malicious Confluence edit blocked</h3>
+              <p>A hidden instruction tried to control the agent’s conclusion and bypass trusted evidence.</p>
+            </div>
+            <div className="context-checks">
+              {firewallIncidents[0].context_checks?.map((check) => (
+                <div className={`context-check ${check.status}`} key={check.label}>
+                  <span>{check.label}</span>
+                  <strong>{check.result}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="firewall-outcome">
+              <b>Blocked safely</b>
+              <span>Instruction removed. AI tools denied. Scan continued using trusted evidence.</span>
+            </div>
+            <details className="firewall-details">
+              <summary>Show technical details</summary>
               <div className="signal-list">
                 {firewallIncidents[0].signals.map((signal) => <span key={signal}>{signal}</span>)}
               </div>
-            </div>
-            <ol className="firewall-trace">
-              {firewallIncidents[0].checks.concat(firewallIncidents[0].actions).map((step, index) => (
-                <li key={`${step}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span>{step}</li>
-              ))}
-            </ol>
+              <ol className="firewall-trace">
+                {firewallIncidents[0].checks.concat(firewallIncidents[0].actions).map((step, index) => (
+                  <li key={`${step}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span>{step}</li>
+                ))}
+              </ol>
+            </details>
           </div>
         )}
       </section>

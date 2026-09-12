@@ -108,9 +108,9 @@ Open:
 ### AgentFirewall integration demo
 
 1. Click `Reset Demo`, then `Simulate Migration -> EKS`.
-2. Click `Inject poisoned document` to place an agent-targeted instruction in the mocked Confluence page.
+2. Click `Simulate malicious Confluence edit` to add a hidden instruction that tries to keep stale EC2 knowledge verified despite contradictory AWS and GitLab evidence.
 3. Click `Run Scan`.
-4. Review the AgentFirewall trace: the instruction is detected, quarantined from model context, and recorded as a security incident.
+4. Review the AgentFirewall trace and contextual investigation: external author, unexpected version, missing change request, and AWS/GitLab contradiction.
 5. Confirm TrueSource still detects the legitimate EC2 -> EKS drift from trusted evidence.
 6. Approve the safe repair; AgentFirewall validates the write before the connector executes.
 

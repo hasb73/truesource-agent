@@ -388,8 +388,8 @@ def execute_scan(scan_id: str, scope: list[str], actor: dict[str, str], provider
     security_events = result.get("security_events", [])
     if security_events:
         scan_run.activity.extend([
-            {"time": now(), "status": "warn", "message": "AgentFirewall detected an indirect prompt injection"},
-            {"time": now(), "status": "warn", "message": "Poisoned instructions quarantined from model context"},
+            {"time": now(), "status": "warn", "message": "AgentFirewall detected an attempted knowledge manipulation"},
+            {"time": now(), "status": "warn", "message": "Malicious instructions quarantined from model context"},
             {"time": now(), "status": "ok", "message": "Scan continued with trusted evidence"},
         ])
         security_event = {
