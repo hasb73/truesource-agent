@@ -18,12 +18,37 @@ AUTHORITY = {
     "sharepoint": 0.55,
 }
 
+ATTRIBUTE_LABELS = {
+    "compute": ("Compute", "Runtime"),
+    "database": ("Database", "Database"),
+    "region": ("Region", "Region"),
+    "deployment": ("Deployment", "Deployment"),
+}
+
 
 def _extract(content: str | None, label: str) -> str | None:
     if not content:
         return None
     match = re.search(rf"{label}:\s*(.+)", content)
     return match.group(1).strip() if match else None
+
+
+def _replace_line(content: str, label: str, value: str) -> str:
+    pattern = rf"({re.escape(label)}:\s*)(.+)"
+    return re.sub(pattern, rf"\1{value}", content)
+
+
+def _support_evidence(attribute: str, observed: str | None, commit: dict[str, Any], jira: dict[str, Any], servicenow: dict[str, Any]) -> tuple[bool, bool, bool]:
+    commit_text = f"{commit.get('message', '')} {' '.join(commit.get('files_changed', []))}".lower()
+    jira_text = " ".join(jira.get("comments", [])).lower()
+    sn_text = f"{servicenow.get('status', '')} {servicenow.get('implementation_plan', '')}".lower()
+    target = (observed or "").lower()
+    gitlab_support = target in commit_text if target else False
+    jira_support = jira.get("status") == "Done"
+    servicenow_support = servicenow.get("status") == "Closed"
+    if attribute == "compute":
+        gitlab_support = gitlab_support or "eks" in commit_text or "runtime" in commit_text
+    return gitlab_support, jira_support, servicenow_support
 
 
 def _confidence(supporting: list[dict[str, Any]], contradicting: list[dict[str, Any]]) -> tuple[float, dict[str, Any]]:
@@ -59,98 +84,124 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
     confluence = payload.get("confluence") or {}
     sharepoint = payload.get("sharepoint") or {}
 
-    observed_compute = aws.get("compute")
-    observed_database = aws.get("database")
-    documented_compute = _extract(confluence.get("content"), "Compute") or _extract(sharepoint.get("content"), "Runtime")
-    documented_database = _extract(confluence.get("content"), "Database") or _extract(sharepoint.get("content"), "Database")
+    observed_state = {
+        "compute": aws.get("compute"),
+        "database": aws.get("database"),
+        "region": aws.get("region"),
+        "deployment": aws.get("deployment"),
+    }
+    documented_state = {
+        "compute": _extract(confluence.get("content"), "Compute") or _extract(sharepoint.get("content"), "Runtime"),
+        "database": _extract(confluence.get("content"), "Database") or _extract(sharepoint.get("content"), "Database"),
+        "region": _extract(confluence.get("content"), "Region") or _extract(sharepoint.get("content"), "Region"),
+        "deployment": _extract(confluence.get("content"), "Deployment"),
+    }
+
+    drift_attribute = next(
+        (
+            attribute
+            for attribute in ["compute", "database", "region", "deployment"]
+            if observed_state.get(attribute) and documented_state.get(attribute) and observed_state[attribute] != documented_state[attribute]
+        ),
+        None,
+    )
 
     migration_commit = commits[0] if commits else {}
     latest_deployment = deployments[0] if deployments else {}
-    migrated = observed_compute == "EKS"
+    gitlab_support, jira_support, servicenow_support = _support_evidence(
+        drift_attribute or "compute",
+        observed_state.get(drift_attribute or "compute"),
+        migration_commit,
+        jira,
+        servicenow,
+    )
 
     evidence = [
         {
             "source": "aws",
             "source_type": "operational",
             "entity": application,
-            "attribute": "compute",
-            "value": observed_compute,
+            "attribute": drift_attribute or "compute",
+            "value": observed_state.get(drift_attribute or "compute"),
             "observed_at": payload["collected_at"],
             "source_reference": "aws://payments",
             "confidence": 0.99,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["aws"],
-            "supports": observed_compute == "EKS",
-            "fact": f"AWS reports Payments compute on {observed_compute or 'unknown'}.",
+            "supports": bool(observed_state.get(drift_attribute or "compute")),
+            "fact": (
+                f"AWS reports Payments {drift_attribute or 'compute'} as "
+                f"{observed_state.get(drift_attribute or 'compute') or 'unknown'}."
+            ),
         },
         {
             "source": "gitlab",
             "source_type": "deployment",
             "entity": application,
-            "attribute": "compute",
+            "attribute": drift_attribute or "compute",
             "value": latest_deployment.get("runtime"),
             "observed_at": latest_deployment.get("timestamp", payload["collected_at"]),
             "source_reference": "gitlab://payments-api/deployments",
             "confidence": 0.93,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["gitlab"],
-            "supports": latest_deployment.get("runtime") == "EKS" or "EKS" in migration_commit.get("message", ""),
+            "supports": gitlab_support,
             "fact": migration_commit.get("message", "No recent migration commit found."),
         },
         {
             "source": "jira",
             "source_type": "workflow",
             "entity": application,
-            "attribute": "compute",
+            "attribute": drift_attribute or "compute",
             "value": jira.get("status"),
             "observed_at": jira.get("updated_at", payload["collected_at"]),
             "source_reference": "jira://PAY-4821",
             "confidence": 0.9,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["jira"],
-            "supports": jira.get("status") == "Done",
+            "supports": jira_support,
             "fact": f"Jira issue PAY-4821 status is {jira.get('status', 'unknown')}.",
         },
         {
             "source": "servicenow",
             "source_type": "change_management",
             "entity": application,
-            "attribute": "compute",
+            "attribute": drift_attribute or "compute",
             "value": servicenow.get("status"),
             "observed_at": servicenow.get("updated_at", payload["collected_at"]),
             "source_reference": "servicenow://CHG003421",
             "confidence": 0.95,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["servicenow"],
-            "supports": servicenow.get("status") == "Closed",
+            "supports": servicenow_support,
             "fact": f"ServiceNow change CHG003421 is {servicenow.get('status', 'unknown')}.",
         },
         {
             "source": "confluence",
             "source_type": "documentation",
             "entity": application,
-            "attribute": "compute",
-            "value": documented_compute,
+            "attribute": drift_attribute or "compute",
+            "value": documented_state.get(drift_attribute or "compute"),
             "observed_at": confluence.get("last_modified", payload["collected_at"]),
             "source_reference": f"confluence://{confluence.get('id', 'unknown')}",
             "confidence": 0.65,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["confluence"],
-            "supports": documented_compute == observed_compute and documented_compute is not None,
+            "supports": documented_state.get(drift_attribute or "compute") == observed_state.get(drift_attribute or "compute"),
             "fact": confluence.get("content", "Confluence page unavailable."),
         },
         {
             "source": "sharepoint",
             "source_type": "documentation",
             "entity": application,
-            "attribute": "compute",
-            "value": _extract(sharepoint.get("content"), "Runtime"),
+            "attribute": drift_attribute or "compute",
+            "value": documented_state.get(drift_attribute or "compute"),
             "observed_at": sharepoint.get("last_modified", payload["collected_at"]),
             "source_reference": f"sharepoint://{sharepoint.get('id', 'unknown')}",
             "confidence": 0.6,
             "collected_at": payload["collected_at"],
             "authority_weight": AUTHORITY["sharepoint"],
-            "supports": _extract(sharepoint.get("content"), "Runtime") == observed_compute and observed_compute is not None,
+            "supports": documented_state.get(drift_attribute or "compute") == observed_state.get(drift_attribute or "compute"),
             "fact": sharepoint.get("content", "SharePoint document unavailable."),
         },
     ]
@@ -158,14 +209,22 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
     supporting = [item for item in evidence if item.get("supports") and item["source"] in {"aws", "gitlab", "jira", "servicenow"}]
     contradicting = [
         item for item in evidence
-        if item["source"] in {"confluence", "sharepoint"} and documented_compute and observed_compute and documented_compute != observed_compute
+        if item["source"] in {"confluence", "sharepoint"}
+        and drift_attribute
+        and documented_state.get(drift_attribute)
+        and observed_state.get(drift_attribute)
+        and documented_state[drift_attribute] != observed_state[drift_attribute]
     ]
     confidence, confidence_breakdown = _confidence(supporting, contradicting)
 
     proposed_changes = []
     if confluence:
         before = confluence["content"]
-        after = before.replace("Compute: EC2", "Compute: EKS").replace("Database: RDS MySQL", "Database: RDS PostgreSQL").replace("Deployment: EC2 deployment scripts", "Deployment: GitLab CI/CD")
+        after = before
+        for attribute, value in observed_state.items():
+            if value and documented_state.get(attribute) and documented_state[attribute] != value:
+                confluence_label = ATTRIBUTE_LABELS[attribute][0]
+                after = _replace_line(after, confluence_label, value)
         proposed_changes.append({
             "source": "confluence",
             "document_id": confluence["id"],
@@ -175,7 +234,12 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
         })
     if sharepoint:
         before = sharepoint["content"]
-        after = before.replace("Runtime: EC2", "Runtime: EKS").replace("Database: MySQL", "Database: RDS PostgreSQL")
+        after = before
+        for attribute, value in observed_state.items():
+            if value and documented_state.get(attribute) and documented_state[attribute] != value:
+                sharepoint_label = ATTRIBUTE_LABELS[attribute][1]
+                if sharepoint_label != "Deployment":
+                    after = _replace_line(after, sharepoint_label, value)
         proposed_changes.append({
             "source": "sharepoint",
             "document_id": sharepoint["id"],
@@ -184,27 +248,40 @@ def deterministic_analysis(application: str = "Payments", provider_override: Opt
             "after": after,
         })
 
-    drift_detected = migrated and documented_compute == "EC2" and len(supporting) >= 2
-    finding = "Payments documentation is stale because operational sources show an EKS migration while documentation still says EC2." if drift_detected else "No high-confidence documentation drift detected."
-    rationale = "Operational sources outrank documentation, and multiple independent systems corroborate the migration." if drift_detected else "The available evidence does not exceed the drift threshold."
+    drift_detected = bool(drift_attribute and len(supporting) >= 2)
+    documented_value = documented_state.get(drift_attribute or "compute") or "Unknown"
+    observed_value = observed_state.get(drift_attribute or "compute") or "Unknown"
+    if drift_detected:
+        finding = (
+            f"Payments documentation is stale for {drift_attribute} because operational sources show "
+            f"{observed_value} while documentation still says {documented_value}."
+        )
+        rationale = "Operational systems outrank documentation, and independent workflow systems corroborate the change."
+    else:
+        finding = "No high-confidence documentation drift detected."
+        rationale = "The available evidence does not exceed the drift threshold."
 
     result = {
         "application": application,
-        "attribute": "compute",
+        "attribute": drift_attribute or "compute",
         "drift_detected": drift_detected,
         "finding": finding,
         "rationale": rationale,
         "confidence": confidence if drift_detected else max(0.28, round(confidence - 0.35, 2)),
-        "documented_value": documented_compute or "Unknown",
-        "observed_value": observed_compute or "Unknown",
-        "observed_database": observed_database or documented_database or "Unknown",
-        "documented_database": documented_database or "Unknown",
+        "documented_value": documented_value,
+        "observed_value": observed_value,
+        "observed_database": observed_state.get("database") or documented_state.get("database") or "Unknown",
+        "documented_database": documented_state.get("database") or "Unknown",
         "evidence": redact_value(evidence),
         "proposed_changes": proposed_changes,
         "confidence_breakdown": confidence_breakdown,
         "affected_documents": [change["document"] for change in proposed_changes],
+<<<<<<< Updated upstream
         "dedupe_key": f"{application}:compute:{documented_compute}->{observed_compute}",
         "security_events": security_events,
+=======
+        "dedupe_key": f"{application}:{drift_attribute or 'compute'}:{documented_value}->{observed_value}",
+>>>>>>> Stashed changes
     }
 
     llm_result = run_json_prompt(

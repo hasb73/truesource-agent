@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from shared.demo_data import clone_seed, jira_seed, migrate_jira
+from shared.demo_data import apply_jira_scenario, clone_seed, jira_seed, migrate_jira
 
 app = FastAPI(title="TrueSource Mock Jira", version="0.1.0")
 STATE = clone_seed(jira_seed)
@@ -29,6 +29,14 @@ def get_issue(issue: str) -> dict:
 @app.post("/jira/demo/migrate")
 def migrate() -> dict:
     return migrate_jira(STATE)
+
+
+@app.post("/jira/demo/change/{scenario}")
+def change(scenario: str) -> dict:
+    try:
+        return apply_jira_scenario(STATE, scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/jira/demo/reset")

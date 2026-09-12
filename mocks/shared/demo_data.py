@@ -4,6 +4,25 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
+PAYMENTS_SCENARIOS = {
+    "eks_migration": {
+        "name": "EKS Migration",
+        "summary": "Move Payments compute from EC2 to EKS and align deployment tooling.",
+    },
+    "database_modernization": {
+        "name": "Database Modernization",
+        "summary": "Upgrade Payments database from RDS MySQL to Aurora PostgreSQL.",
+    },
+    "region_failover": {
+        "name": "Region Failover",
+        "summary": "Fail over Payments from me-central-1 to eu-west-1.",
+    },
+    "gitops_rollout": {
+        "name": "GitOps Rollout",
+        "summary": "Switch Payments deployment flow from scripts to Argo CD.",
+    },
+}
+
 APPLICATIONS = [
     "Payments",
     "Customer Portal",
@@ -83,17 +102,45 @@ def aws_seed() -> dict[str, Any]:
 
 
 def migrate_aws(state: dict[str, Any]) -> dict[str, Any]:
+    return apply_aws_scenario(state, "eks_migration")
+
+
+def list_scenarios() -> list[dict[str, str]]:
+    return [
+        {"id": scenario_id, "name": data["name"], "summary": data["summary"]}
+        for scenario_id, data in PAYMENTS_SCENARIOS.items()
+    ]
+
+
+def apply_aws_scenario(state: dict[str, Any], scenario: str) -> dict[str, Any]:
     resources = state["resources"]
     payments = next(item for item in resources if item["application"] == "Payments")
-    payments["compute"] = "EKS"
-    payments["database"] = "RDS PostgreSQL"
-    payments["deployment"] = "GitLab CI/CD"
-    if not any(change["id"] == "aws-change-1001" for change in state["changes"]):
+
+    change_summary = "Payments infrastructure updated"
+    if scenario == "eks_migration":
+        payments["compute"] = "EKS"
+        payments["database"] = "RDS PostgreSQL"
+        payments["deployment"] = "GitLab CI/CD"
+        change_summary = "Payments migrated from EC2 to EKS"
+    elif scenario == "database_modernization":
+        payments["database"] = "Aurora PostgreSQL"
+        change_summary = "Payments database modernized to Aurora PostgreSQL"
+    elif scenario == "region_failover":
+        payments["region"] = "eu-west-1"
+        change_summary = "Payments failed over from me-central-1 to eu-west-1"
+    elif scenario == "gitops_rollout":
+        payments["deployment"] = "Argo CD"
+        change_summary = "Payments deployment flow migrated to Argo CD"
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+
+    change_id = f"aws-change-{scenario}"
+    if not any(change["id"] == change_id for change in state["changes"]):
         state["changes"].append(
             {
-                "id": "aws-change-1001",
+                "id": change_id,
                 "application": "Payments",
-                "summary": "Payments migrated from EC2 to EKS",
+                "summary": change_summary,
                 "timestamp": now_iso(),
             }
         )
@@ -132,33 +179,82 @@ def gitlab_seed() -> dict[str, Any]:
 
 
 def migrate_gitlab(state: dict[str, Any]) -> dict[str, Any]:
+    return apply_gitlab_scenario(state, "eks_migration")
+
+
+def apply_gitlab_scenario(state: dict[str, Any], scenario: str) -> dict[str, Any]:
     project = state["projects"][0]
-    if not any(commit["sha"] == "a83fd21" for commit in project["commits"]):
+    if scenario == "eks_migration":
+        if not any(commit["sha"] == "a83fd21" for commit in project["commits"]):
+            project["commits"].insert(
+                0,
+                {
+                    "sha": "a83fd21",
+                    "author": "Ava Chen",
+                    "timestamp": now_iso(),
+                    "message": "feat: migrate Payments from EC2 to EKS",
+                    "files_changed": [
+                        "k8s/payments/deployment.yaml",
+                        "infra/eks/payments.tf",
+                        "docs/runbooks/payments-runtime.md",
+                    ],
+                },
+            )
+        if not any(deploy["id"] == "deploy-2001" for deploy in project["deployments"]):
+            project["deployments"].insert(
+                0,
+                {
+                    "id": "deploy-2001",
+                    "environment": "production",
+                    "runtime": "EKS",
+                    "status": "success",
+                    "timestamp": now_iso(),
+                },
+            )
+    elif scenario == "database_modernization":
         project["commits"].insert(
             0,
             {
-                "sha": "a83fd21",
+                "sha": "b91ca42",
                 "author": "Ava Chen",
                 "timestamp": now_iso(),
-                "message": "feat: migrate Payments from EC2 to EKS",
+                "message": "feat: move Payments database to Aurora PostgreSQL",
                 "files_changed": [
-                    "k8s/payments/deployment.yaml",
-                    "infra/eks/payments.tf",
-                    "docs/runbooks/payments-runtime.md",
+                    "infra/rds/payments-aurora.tf",
+                    "app/config/database.yaml",
                 ],
             },
         )
-    if not any(deploy["id"] == "deploy-2001" for deploy in project["deployments"]):
-        project["deployments"].insert(
+    elif scenario == "region_failover":
+        project["commits"].insert(
             0,
             {
-                "id": "deploy-2001",
-                "environment": "production",
-                "runtime": "EKS",
-                "status": "success",
+                "sha": "c73fd14",
+                "author": "Ava Chen",
                 "timestamp": now_iso(),
+                "message": "ops: fail over Payments to eu-west-1",
+                "files_changed": [
+                    "infra/regions/payments-eu-west-1.tf",
+                    "runbooks/failover.md",
+                ],
             },
         )
+    elif scenario == "gitops_rollout":
+        project["commits"].insert(
+            0,
+            {
+                "sha": "d32ee8a",
+                "author": "Ava Chen",
+                "timestamp": now_iso(),
+                "message": "feat: adopt Argo CD for Payments deployments",
+                "files_changed": [
+                    "argocd/payments/application.yaml",
+                    "deploy/ec2/payments.sh",
+                ],
+            },
+        )
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
     return deepcopy(project)
 
 
@@ -184,11 +280,25 @@ def jira_seed() -> dict[str, Any]:
 
 
 def migrate_jira(state: dict[str, Any]) -> dict[str, Any]:
+    return apply_jira_scenario(state, "eks_migration")
+
+
+def apply_jira_scenario(state: dict[str, Any], scenario: str) -> dict[str, Any]:
     issue = state["issues"][0]
     issue["status"] = "Done"
     issue["updated_at"] = now_iso()
-    if "Migration validated in production." not in issue["comments"]:
-        issue["comments"].append("Migration validated in production.")
+    if scenario == "eks_migration":
+        comment = "Migration validated in production."
+    elif scenario == "database_modernization":
+        comment = "Aurora PostgreSQL cutover validated in production."
+    elif scenario == "region_failover":
+        comment = "Regional failover to eu-west-1 validated by on-call."
+    elif scenario == "gitops_rollout":
+        comment = "Argo CD rollout completed and validated."
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+    if comment not in issue["comments"]:
+        issue["comments"].append(comment)
     return deepcopy(issue)
 
 
@@ -209,8 +319,22 @@ def servicenow_seed() -> dict[str, Any]:
 
 
 def migrate_servicenow(state: dict[str, Any]) -> dict[str, Any]:
+    return apply_servicenow_scenario(state, "eks_migration")
+
+
+def apply_servicenow_scenario(state: dict[str, Any], scenario: str) -> dict[str, Any]:
     change = state["changes"][0]
     change["status"] = "Closed"
+    if scenario == "eks_migration":
+        change["implementation_plan"] = "Cut traffic to EC2, deploy workloads to EKS, validate service health."
+    elif scenario == "database_modernization":
+        change["implementation_plan"] = "Migrate database from RDS MySQL to Aurora PostgreSQL and validate replication."
+    elif scenario == "region_failover":
+        change["implementation_plan"] = "Shift production traffic from me-central-1 to eu-west-1 and validate latency."
+    elif scenario == "gitops_rollout":
+        change["implementation_plan"] = "Replace script-based deployments with Argo CD sync waves."
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
     change["updated_at"] = now_iso()
     return deepcopy(change)
 
@@ -234,6 +358,7 @@ def confluence_seed() -> dict[str, Any]:
                     f"{app_name} Architecture\n\n"
                     f"Compute: {compute}\n"
                     f"Database: {database}\n"
+                    f"Region: {_base_resources()[index - 1]['region']}\n"
                     f"Deployment: {deployment}"
                 ),
             }
@@ -257,7 +382,8 @@ def sharepoint_seed() -> dict[str, Any]:
                 "content": (
                     f"{app_name} Platform Architecture\n\n"
                     f"Runtime: {compute}\n"
-                    f"Database: {database}"
+                    f"Database: {database}\n"
+                    f"Region: {_base_resources()[index - 1]['region']}"
                 ),
             }
         )

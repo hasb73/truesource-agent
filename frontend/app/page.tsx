@@ -115,6 +115,12 @@ type Actor = {
   tenant_id: string;
 };
 
+type DemoScenario = {
+  id: string;
+  name: string;
+  summary: string;
+};
+
 export default function Home() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [drifts, setDrifts] = useState<Drift[]>([]);
@@ -128,8 +134,12 @@ export default function Home() {
   const [question, setQuestion] = useState("How is Payments deployed?");
   const [answer, setAnswer] = useState<any>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+<<<<<<< Updated upstream
   const [firewallIncidents, setFirewallIncidents] = useState<FirewallIncident[]>([]);
   const [attackArmed, setAttackArmed] = useState(false);
+=======
+  const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
+>>>>>>> Stashed changes
 
   const selected = drifts.find((item) => item.id === selectedId) || null;
 
@@ -138,14 +148,22 @@ export default function Home() {
   }
 
   async function refresh() {
+<<<<<<< Updated upstream
     const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, firewallData] = await Promise.all([
+=======
+    const [dashboardData, driftData, documentData, auditData, runtimeData, actorResponse, scenarioData] = await Promise.all([
+>>>>>>> Stashed changes
       apiFetch("/api/dashboard").then((response) => response.json()),
       apiFetch("/api/drift").then((response) => response.json()),
       apiFetch("/api/documents").then((response) => response.json()),
       apiFetch("/api/audit").then((response) => response.json()),
       apiFetch("/api/runtime").then((response) => response.json()),
       apiFetch("/api/auth/me").catch(() => null),
+<<<<<<< Updated upstream
       apiFetch("/api/firewall/incidents").then((response) => response.json()),
+=======
+      apiFetch("/api/demo/scenarios").then((response) => response.json()).catch(() => []),
+>>>>>>> Stashed changes
     ]);
     setDashboard(dashboardData);
     setDrifts(driftData);
@@ -164,6 +182,7 @@ export default function Home() {
     if (!selectedId && driftData.length) {
       setSelectedId(driftData[driftData.length - 1].id);
     }
+    setScenarios(Array.isArray(scenarioData) ? scenarioData : []);
   }
 
   useEffect(() => {
@@ -175,8 +194,16 @@ export default function Home() {
   }
 
   async function changeReality() {
-    setBusyAction("migrate");
-    await apiFetch("/api/demo/migrate", { method: "POST" });
+    await applyScenario("eks_migration");
+  }
+
+  async function applyScenario(scenario: string) {
+    setBusyAction(`scenario:${scenario}`);
+    await apiFetch("/api/demo/change", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenario }),
+    });
     await refresh();
     setBusyAction(null);
   }
@@ -260,6 +287,7 @@ export default function Home() {
         <div className="topbar-actions">
           <div className="pill firewall-pill">AgentFirewall · enforcing</div>
           <div className="pill">● Knowledge health {dashboard?.health ?? "--"}%</div>
+          <a className="secondary doc-link" href="/portal">Open Docs Portal</a>
           <AuthControls actor={actor} />
         </div>
       </header>
@@ -291,7 +319,16 @@ export default function Home() {
             {busyAction === "reset" ? "Resetting…" : "Reset Demo"}
           </button>
           <button className="secondary" onClick={changeReality} disabled={busyAction !== null || reviewDisabled}>
-            {busyAction === "migrate" ? "Simulating…" : "Simulate Migration → EKS"}
+            {busyAction === "scenario:eks_migration" ? "Simulating…" : "Simulate Migration → EKS"}
+          </button>
+          <button className="secondary" onClick={() => void applyScenario("database_modernization")} disabled={busyAction !== null || reviewDisabled}>
+            {busyAction === "scenario:database_modernization" ? "Simulating…" : "Simulate DB Modernization"}
+          </button>
+          <button className="secondary" onClick={() => void applyScenario("region_failover")} disabled={busyAction !== null || reviewDisabled}>
+            {busyAction === "scenario:region_failover" ? "Simulating…" : "Simulate Region Failover"}
+          </button>
+          <button className="secondary" onClick={() => void applyScenario("gitops_rollout")} disabled={busyAction !== null || reviewDisabled}>
+            {busyAction === "scenario:gitops_rollout" ? "Simulating…" : "Simulate GitOps Rollout"}
           </button>
           <button className="danger-button" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
             {busyAction === "attack" ? "Injecting…" : attackArmed ? "Poisoned document armed" : "Inject poisoned document"}
@@ -301,6 +338,20 @@ export default function Home() {
           </button>
         </div>
       </section>
+
+      {scenarios.length > 0 && (
+        <section className="card scenario-strip">
+          <div className="card-title">Available change scenarios</div>
+          <div className="mini-stack">
+            {scenarios.map((item) => (
+              <div className="mini notice" key={item.id}>
+                <b>{item.name}</b>
+                <span>{item.summary}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="stats">
         <Stat label="Documentation health" value={`${dashboard?.health ?? "—"}%`} />

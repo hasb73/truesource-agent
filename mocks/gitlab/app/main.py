@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from shared.demo_data import clone_seed, gitlab_seed, migrate_gitlab
+from shared.demo_data import apply_gitlab_scenario, clone_seed, gitlab_seed, migrate_gitlab
 
 app = FastAPI(title="TrueSource Mock GitLab", version="0.1.0")
 STATE = clone_seed(gitlab_seed)
@@ -33,6 +33,14 @@ def list_deployments(project: str) -> list[dict]:
 @app.post("/gitlab/demo/migrate")
 def migrate() -> dict:
     return migrate_gitlab(STATE)
+
+
+@app.post("/gitlab/demo/change/{scenario}")
+def change(scenario: str) -> dict:
+    try:
+        return apply_gitlab_scenario(STATE, scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/gitlab/demo/reset")

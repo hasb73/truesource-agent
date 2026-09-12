@@ -9,7 +9,11 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .agent import analyze, answer_question
+<<<<<<< Updated upstream
 from .connectors import list_documents, reset_demo, simulate_migration, simulate_prompt_injection, update_confluence, update_sharepoint
+=======
+from .connectors import list_confluence_pages, list_documents, list_scenarios, list_sharepoint_documents, reset_demo, simulate_change, simulate_migration, update_confluence, update_sharepoint
+>>>>>>> Stashed changes
 from .database import health_summary, init_db, load_runtime_state, replace_knowledge, reset_all_state, save_audit, save_incident, save_scan
 from .models import DriftEvent, ScanRun
 from .providers import provider_summary
@@ -50,6 +54,15 @@ class ScanRequest(BaseModel):
 
 class DecisionRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class DemoChangeRequest(BaseModel):
+    scenario: str = "eks_migration"
+
+
+class PortalDocUpdateRequest(BaseModel):
+    content: str
+    source: str = "confluence"
 
 @app.get("/api/health")
 def health():
@@ -137,6 +150,53 @@ def documents():
     return docs
 
 
+@app.get("/api/docs/portal")
+def docs_portal():
+    return {
+        "confluence": list_confluence_pages(),
+        "sharepoint": list_sharepoint_documents(),
+    }
+
+
+@app.put("/api/docs/portal/confluence/{page_id}")
+def portal_update_confluence(page_id: str, payload: PortalDocUpdateRequest, request: Request):
+    actor = get_actor(request)
+    require_reviewer(actor)
+    updated = update_confluence(page_id, payload.content, actor["name"])
+    event = {
+        "time": now(),
+        "actor": actor,
+        "event": "PORTAL_DOC_UPDATED",
+        "source": "confluence",
+        "document_id": page_id,
+    }
+    AUDIT.append(event)
+    save_audit(event)
+    return {"ok": True, "document": updated}
+
+
+@app.put("/api/docs/portal/sharepoint/{document_id}")
+def portal_update_sharepoint(document_id: str, payload: PortalDocUpdateRequest, request: Request):
+    actor = get_actor(request)
+    require_reviewer(actor)
+    updated = update_sharepoint(document_id, payload.content, actor["name"])
+    event = {
+        "time": now(),
+        "actor": actor,
+        "event": "PORTAL_DOC_UPDATED",
+        "source": "sharepoint",
+        "document_id": document_id,
+    }
+    AUDIT.append(event)
+    save_audit(event)
+    return {"ok": True, "document": updated}
+
+
+@app.get("/api/demo/scenarios")
+def demo_scenarios():
+    return list_scenarios()
+
+
 @app.get("/api/knowledge")
 def knowledge():
     return VERIFIED_KNOWLEDGE
@@ -152,10 +212,22 @@ def scan_status(scan_id: str):
 def demo_migrate(request: Request):
     actor = get_actor(request)
     result = simulate_migration()
-    event = {"time": now(), "actor": actor, "event": "DEMO_MIGRATION", "result": result}
+    event = {"time": now(), "actor": actor, "event": "DEMO_CHANGE_APPLIED", "scenario": "eks_migration", "result": result}
     AUDIT.append(event)
     save_audit(event)
-    return {"ok": True, "result": result}
+    return {"ok": True, "scenario": "eks_migration", "result": result}
+
+
+@app.post("/api/demo/change")
+def demo_change(payload: DemoChangeRequest, request: Request):
+    actor = get_actor(request)
+    result = simulate_change(payload.scenario)
+    if not all(result.values()):
+        raise HTTPException(status_code=400, detail=f"Unable to apply scenario: {payload.scenario}")
+    event = {"time": now(), "actor": actor, "event": "DEMO_CHANGE_APPLIED", "scenario": payload.scenario, "result": result}
+    AUDIT.append(event)
+    save_audit(event)
+    return {"ok": True, "scenario": payload.scenario, "result": result}
 
 
 @app.post("/api/demo/inject-agent-attack")

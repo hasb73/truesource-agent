@@ -10,7 +10,9 @@ Call out that the answer still says EC2 because the current verified knowledge i
 
 ## 0:30 Reality changes
 
-Click `Simulate Migration -> EKS`.
+Click one of the scenario triggers, for example `Simulate Migration -> EKS`.
+
+Call out that you can also trigger `Simulate DB Modernization`, `Simulate Region Failover`, and `Simulate GitOps Rollout`.
 
 This updates operational and workflow evidence in the AWS, GitLab, Jira, and ServiceNow mock services.
 
@@ -47,6 +49,10 @@ Show that the documents update and the audit trail records the action.
 Ask the same question again.
 
 Show the trust card with verified-at time, confidence, sources, and updated docs.
+
+## 2:30 Documentation portal
+
+Open `/portal` and show the Confluence-style mock workspace with searchable pages and SharePoint mirrors.
 
 ## 2:40 Closing
 

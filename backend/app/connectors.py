@@ -76,12 +76,28 @@ def list_documents() -> list[dict[str, Any]]:
     return confluence_pages + sharepoint_docs
 
 
+def list_confluence_pages() -> list[dict[str, Any]]:
+    return _get_json(f"{CONFLUENCE_MOCK_URL}/confluence/pages") or []
+
+
+def list_sharepoint_documents() -> list[dict[str, Any]]:
+    return _get_json(f"{SHAREPOINT_MOCK_URL}/sharepoint/documents") or []
+
+
+def list_scenarios() -> list[dict[str, str]]:
+    return _get_json(f"{AWS_MOCK_URL}/aws/demo/scenarios") or []
+
+
 def simulate_migration() -> dict[str, Any]:
+    return simulate_change("eks_migration")
+
+
+def simulate_change(scenario: str) -> dict[str, Any]:
     return {
-        "aws": _post_json(f"{AWS_MOCK_URL}/aws/demo/migrate"),
-        "gitlab": _post_json(f"{GITLAB_MOCK_URL}/gitlab/demo/migrate"),
-        "jira": _post_json(f"{JIRA_MOCK_URL}/jira/demo/migrate"),
-        "servicenow": _post_json(f"{SERVICENOW_MOCK_URL}/servicenow/demo/migrate"),
+        "aws": _post_json(f"{AWS_MOCK_URL}/aws/demo/change/{scenario}"),
+        "gitlab": _post_json(f"{GITLAB_MOCK_URL}/gitlab/demo/change/{scenario}"),
+        "jira": _post_json(f"{JIRA_MOCK_URL}/jira/demo/change/{scenario}"),
+        "servicenow": _post_json(f"{SERVICENOW_MOCK_URL}/servicenow/demo/change/{scenario}"),
     }
 
 

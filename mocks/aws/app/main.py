@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from shared.demo_data import aws_seed, clone_seed, migrate_aws
+from shared.demo_data import apply_aws_scenario, aws_seed, clone_seed, list_scenarios, migrate_aws
 
 app = FastAPI(title="TrueSource Mock AWS", version="0.1.0")
 STATE = clone_seed(aws_seed)
@@ -39,6 +39,19 @@ def list_changes() -> list[dict]:
 @app.post("/aws/demo/migrate")
 def migrate() -> dict:
     return migrate_aws(STATE)
+
+
+@app.get("/aws/demo/scenarios")
+def scenarios() -> list[dict[str, str]]:
+    return list_scenarios()
+
+
+@app.post("/aws/demo/change/{scenario}")
+def change(scenario: str) -> dict:
+    try:
+        return apply_aws_scenario(STATE, scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/aws/demo/reset")

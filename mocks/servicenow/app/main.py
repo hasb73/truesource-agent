@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
-from shared.demo_data import clone_seed, migrate_servicenow, servicenow_seed
+from shared.demo_data import apply_servicenow_scenario, clone_seed, migrate_servicenow, servicenow_seed
 
 app = FastAPI(title="TrueSource Mock ServiceNow", version="0.1.0")
 STATE = clone_seed(servicenow_seed)
@@ -29,6 +29,14 @@ def get_change(change: str) -> dict:
 @app.post("/servicenow/demo/migrate")
 def migrate() -> dict:
     return migrate_servicenow(STATE)
+
+
+@app.post("/servicenow/demo/change/{scenario}")
+def change(scenario: str) -> dict:
+    try:
+        return apply_servicenow_scenario(STATE, scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/servicenow/demo/reset")

@@ -98,13 +98,14 @@ Open:
 ## Demo walkthrough
 
 1. Open the dashboard and ask “How is Payments deployed?” to see the stale EC2 answer.
-2. Click `Simulate Migration -> EKS`.
+2. Click one scenario trigger such as `Simulate Migration -> EKS`, `Simulate DB Modernization`, `Simulate Region Failover`, or `Simulate GitOps Rollout`.
 3. Click `Run Scan`.
 4. Review the knowledge incident, evidence, and proposed diffs.
 5. Click `Approve & refresh verified RAG`.
 6. Ask the same question again and verify the answer now says EKS with confidence and provenance.
 7. Click `Reset Demo` to restore the original scenario.
 
+<<<<<<< Updated upstream
 ### AgentFirewall integration demo
 
 1. Click `Reset Demo`, then `Simulate Migration -> EKS`.
@@ -115,6 +116,13 @@ Open:
 6. Approve the safe repair; AgentFirewall validates the write before the connector executes.
 
 See `docs/agent-firewall-testing.md` for detailed tests and expected results.
+=======
+## Docs portal mock
+
+1. Open `http://localhost:3000/portal` for a Confluence-style documentation workspace.
+2. Browse and search pages from the mock Confluence source.
+3. Inspect SharePoint mirror content and version metadata side by side.
+>>>>>>> Stashed changes
 
 ## Hackathon materials
 
