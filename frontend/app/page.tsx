@@ -318,7 +318,7 @@ export default function Home() {
           </div>
         </div>
         <div className="hero-actions">
-          <select className="provider-select" value={provider} onChange={(event) => setProvider(event.target.value)}>
+          <select className="provider-select" aria-label="Model provider" value={provider} onChange={(event) => setProvider(event.target.value)}>
             {runtime && Object.entries(runtime.llm.providers).map(([key, value]) => (
               <option key={key} value={key} disabled={!value.configured && key !== "deterministic"}>
                 {key} · {value.model}
@@ -341,15 +341,13 @@ export default function Home() {
           <button className="secondary" onClick={() => void applyScenario("gitops_rollout")} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "scenario:gitops_rollout" ? "Simulating…" : "Simulate GitOps Rollout"}
           </button>
-          <div className="attack-control">
-            <button className="danger-button" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
+            <button className="danger-button" aria-describedby="attack-description" onClick={injectAgentAttack} disabled={busyAction !== null || attackArmed}>
               {busyAction === "attack" ? "Simulating…" : attackArmed ? "Malicious edit ready" : "Simulate malicious Confluence edit"}
             </button>
-            <span>Adds a hidden instruction that tries to make TrueSource ignore trusted AWS and GitLab evidence.</span>
-          </div>
           <button className="primary" onClick={runScan} disabled={busyAction !== null || reviewDisabled}>
             {busyAction === "scan" ? "Scanning…" : "Run Scan"}
           </button>
+          <p className="attack-description" id="attack-description">The malicious edit adds a hidden instruction asking TrueSource to ignore AWS and GitLab evidence.</p>
         </div>
       </section>
 
